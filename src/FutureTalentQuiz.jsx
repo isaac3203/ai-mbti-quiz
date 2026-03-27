@@ -670,11 +670,25 @@ function ResultPage({ tally, challengeCount }) {
     if (!resultRef.current || saving) return;
     setSaving(true);
     try {
-      const dataUrl = await toPng(resultRef.current, {
+      // 截图前临时撑开宽度，防止右侧裁切
+      const el = resultRef.current;
+      const origWidth = el.style.width;
+      const origPadding = el.style.padding;
+      el.style.width = "480px";
+      el.style.padding = "40px 32px";
+
+      const dataUrl = await toPng(el, {
         backgroundColor: C.cream,
         pixelRatio: 2,
-        style: { padding: "40px 24px" }
+        width: 544,  // 480 + 32*2
+        height: el.scrollHeight,
+        canvasWidth: 544,
+        canvasHeight: el.scrollHeight,
       });
+
+      // 恢复
+      el.style.width = origWidth;
+      el.style.padding = origPadding;
       const link = document.createElement("a");
       link.download = `AI协同16型-${archetype.name}-${typeCode}.png`;
       link.href = dataUrl;
@@ -692,7 +706,7 @@ function ResultPage({ tally, challengeCount }) {
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", textAlign: "center" }}>
       {/* 可保存区域 */}
-      <div ref={resultRef} style={{ background: C.cream, paddingBottom: 20 }}>
+      <div ref={resultRef} style={{ background: C.cream, paddingBottom: 20, overflow: "hidden" }}>
         {/* 顶部标签 */}
         <div style={{
           display: "inline-block", padding: "6px 24px",
