@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { toPng } from "html-to-image";
+import { QRCodeSVG } from "qrcode.react";
 
 const supabase = createClient(
   "https://pcrktcgzqqqzgjgnohpj.supabase.co",
@@ -111,6 +113,61 @@ function getAdvice(results) {
       : "你用逻辑建立信任，这在 AI 辅助决策中极为关键。当团队面对 AI 的多个建议犹豫不决时，你是那个能用清晰推理拍板的人。"
   ];
 }
+
+// ========== 互补类型推荐 ==========
+function getComplementaryTypes(typeCode) {
+  // 互补逻辑：每个维度取对立面
+  const codes = typeCode.split("");
+  const dimPoles = [
+    { a: "锐", b: "宽" },
+    { a: "宏", b: "实" },
+    { a: "选", b: "编" },
+    { a: "心", b: "理" }
+  ];
+
+  // 完全互补：四个维度全部对立
+  const fullComplement = codes.map((c, i) =>
+    c === dimPoles[i].a ? dimPoles[i].b : dimPoles[i].a
+  ).join("");
+
+  // 部分互补：翻转其中2个维度，选差异最大的组合
+  const partials = [];
+  for (let i = 0; i < 4; i++) {
+    for (let j = i + 1; j < 4; j++) {
+      const flipped = [...codes];
+      flipped[i] = codes[i] === dimPoles[i].a ? dimPoles[i].b : dimPoles[i].a;
+      flipped[j] = codes[j] === dimPoles[j].a ? dimPoles[j].b : dimPoles[j].a;
+      const key = flipped.join("");
+      if (key !== fullComplement && archetypes[key]) {
+        partials.push(key);
+      }
+    }
+  }
+
+  // 返回：完全互补 + 2个部分互补
+  const result = [fullComplement];
+  // 优先选翻转 dim0+dim3（偏见力+共鸣力） 和 dim1+dim2（定义力+调度力）
+  const preferred = [
+    [0, 3], [1, 2], [0, 1], [2, 3]
+  ];
+  for (const [i, j] of preferred) {
+    const flipped = [...codes];
+    flipped[i] = codes[i] === dimPoles[i].a ? dimPoles[i].b : dimPoles[i].a;
+    flipped[j] = codes[j] === dimPoles[j].a ? dimPoles[j].b : dimPoles[j].a;
+    const key = flipped.join("");
+    if (key !== fullComplement && archetypes[key] && !result.includes(key)) {
+      result.push(key);
+    }
+    if (result.length >= 3) break;
+  }
+
+  return result.slice(0, 3).map(code => ({
+    code,
+    name: archetypes[code]?.name || "探索者"
+  }));
+}
+
+const SITE_URL = "https://ai-mbti.biasmoat.com";
 
 // ========== Supabase 数据层 ==========
 async function submitToSupabase(data) {
@@ -590,6 +647,8 @@ function DistributionPage({ userType, onBack }) {
 // ========== 结果页 ==========
 function ResultPage({ tally, challengeCount }) {
   const [showDist, setShowDist] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const resultRef = useRef(null);
 
   const results = dimensions.map(d => {
     const aCount = tally[d.key]?.A || 0;
@@ -605,6 +664,26 @@ function ResultPage({ tally, challengeCount }) {
   const typeCode = results.map(r => r.code).join("");
   const archetype = archetypes[typeCode] || { name: "探索者", tagline: "你的组合独一无二" };
   const adviceList = getAdvice(results);
+  const complementary = getComplementaryTypes(typeCode);
+
+  const handleSaveImage = async () => {
+    if (!resultRef.current || saving) return;
+    setSaving(true);
+    try {
+      const dataUrl = await toPng(resultRef.current, {
+        backgroundColor: C.cream,
+        pixelRatio: 2,
+        style: { padding: "40px 24px" }
+      });
+      const link = document.createElement("a");
+      link.download = `AI协同16型-${archetype.name}-${typeCode}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (e) {
+      console.error("Save image failed:", e);
+    }
+    setSaving(false);
+  };
 
   if (showDist) {
     return <DistributionPage userType={typeCode} onBack={() => setShowDist(false)} />;
@@ -612,118 +691,180 @@ function ResultPage({ tally, challengeCount }) {
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", textAlign: "center" }}>
-      {/* 顶部标签 */}
-      <div style={{
-        display: "inline-block", padding: "6px 24px",
-        background: C.navy, color: C.cream, borderRadius: 2,
-        fontSize: 11, fontWeight: 700, fontFamily: fontTitle,
-        letterSpacing: 4, marginBottom: 20
-      }}>
-        YOUR RESULT
-      </div>
-
-      {/* 四字代码 */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
-        {results.map(r => (
-          <div key={r.key} style={{
-            width: 52, height: 52, borderRadius: 2,
-            background: r.color, color: "#fff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24, fontFamily: fontTitle, fontWeight: 800,
-            boxShadow: `2px 2px 0 ${r.deep}`
-          }}>
-            {r.code}
-          </div>
-        ))}
-      </div>
-
-      {/* 角色名 */}
-      <h1 style={{
-        fontSize: 28, fontWeight: 800, fontFamily: fontTitle,
-        color: C.ink, marginBottom: 6, letterSpacing: 1
-      }}>
-        {archetype.name}
-      </h1>
-
-      {/* 破壁锤子数（tag 下方） */}
-      {challengeCount > 0 && (
-        <p style={{
-          fontSize: 16, fontFamily: font, marginBottom: 4, lineHeight: 1.6
-        }}>
-          <span style={{ color: C.accent, fontWeight: 800, fontSize: 20 }}>{challengeCount}</span>
-          <span style={{ color: C.inkLight }}>把🔨的{archetype.name}</span>
-        </p>
-      )}
-      <p style={{ fontSize: 14, color: C.inkLight, fontFamily: font, lineHeight: 1.8, marginBottom: 8 }}>
-        {archetype.tagline}
-      </p>
-
-      <Divider color={C.accent} />
-
-      {/* 四个维度：双向生长条 + 描述 */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
-        {results.map((r, idx) => (
-          <FramedCard key={r.key} borderColor={r.color}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: fontTitle, letterSpacing: 1 }}>
-                {r.name}
-              </span>
-              <span style={{
-                fontSize: 11, fontWeight: 700, padding: "3px 12px",
-                borderRadius: 2, background: r.color, color: "#fff", fontFamily: fontTitle
-              }}>
-                {r.activePole.label}
-              </span>
-            </div>
-
-            <DualGrowBar dim={r} aCount={r.aCount} bCount={r.bCount} />
-
-            <p style={{ fontSize: 13, color: C.inkLight, lineHeight: 2, fontFamily: font, marginTop: 10 }}>
-              {r.activePole.desc}
-            </p>
-          </FramedCard>
-        ))}
-      </div>
-
-      {/* 破壁力 */}
-      <WallBreakerScore challengeCount={challengeCount} />
-
-      <Divider color={C.navy} />
-
-      {/* 个性化建议 */}
-      <FramedCard borderColor={C.accent} style={{ textAlign: "left" }}>
+      {/* 可保存区域 */}
+      <div ref={resultRef} style={{ background: C.cream, paddingBottom: 20 }}>
+        {/* 顶部标签 */}
         <div style={{
-          display: "inline-block", padding: "3px 14px",
-          background: C.accent, color: "#fff", borderRadius: 2,
+          display: "inline-block", padding: "6px 24px",
+          background: C.navy, color: C.cream, borderRadius: 2,
           fontSize: 11, fontWeight: 700, fontFamily: fontTitle,
-          letterSpacing: 2, marginBottom: 14
+          letterSpacing: 4, marginBottom: 20
         }}>
-          你的人机共生策略
+          YOUR RESULT
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {results.map((r, idx) => (
-            <div key={r.key}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: r.deep, fontFamily: fontTitle, marginBottom: 4 }}>
-                {r.name}·{r.activePole.label}
-              </p>
-              <p style={{ fontSize: 13, color: C.inkLight, lineHeight: 2, fontFamily: font }}>
-                {adviceList[idx]}
-              </p>
+
+        {/* 四字代码 */}
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+          {results.map(r => (
+            <div key={r.key} style={{
+              width: 52, height: 52, borderRadius: 2,
+              background: r.color, color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 24, fontFamily: fontTitle, fontWeight: 800,
+              boxShadow: `2px 2px 0 ${r.deep}`
+            }}>
+              {r.code}
             </div>
           ))}
         </div>
-      </FramedCard>
 
-      {/* 看看其他人 */}
-      <button onClick={() => setShowDist(true)} style={{
-        marginTop: 20, padding: "12px 36px",
-        background: C.cardBg, color: C.ink,
-        fontSize: 14, fontWeight: 700, border: `2px solid ${C.navy}`,
-        borderRadius: 2, cursor: "pointer", fontFamily: fontTitle,
-        letterSpacing: 1, boxShadow: `2px 2px 0 ${C.border}`
-      }}>
-        看看其他人
-      </button>
+        {/* 角色名 */}
+        <h1 style={{
+          fontSize: 28, fontWeight: 800, fontFamily: fontTitle,
+          color: C.ink, marginBottom: 6, letterSpacing: 1
+        }}>
+          {archetype.name}
+        </h1>
+
+        {/* 破壁锤子数（tag 下方） */}
+        {challengeCount > 0 && (
+          <p style={{
+            fontSize: 16, fontFamily: font, marginBottom: 4, lineHeight: 1.6
+          }}>
+            <span style={{ color: C.accent, fontWeight: 800, fontSize: 20 }}>{challengeCount}</span>
+            <span style={{ color: C.inkLight }}> 把🔨的{archetype.name}</span>
+          </p>
+        )}
+        <p style={{ fontSize: 14, color: C.inkLight, fontFamily: font, lineHeight: 1.8, marginBottom: 8 }}>
+          {archetype.tagline}
+        </p>
+
+        <Divider color={C.accent} />
+
+        {/* 四个维度：双向生长条 + 描述 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
+          {results.map((r, idx) => (
+            <FramedCard key={r.key} borderColor={r.color}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: fontTitle, letterSpacing: 1 }}>
+                  {r.name}
+                </span>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: "3px 12px",
+                  borderRadius: 2, background: r.color, color: "#fff", fontFamily: fontTitle
+                }}>
+                  {r.activePole.label}
+                </span>
+              </div>
+
+              <DualGrowBar dim={r} aCount={r.aCount} bCount={r.bCount} />
+
+              <p style={{ fontSize: 13, color: C.inkLight, lineHeight: 2, fontFamily: font, marginTop: 10 }}>
+                {r.activePole.desc}
+              </p>
+            </FramedCard>
+          ))}
+        </div>
+
+        {/* 破壁力 */}
+        <WallBreakerScore challengeCount={challengeCount} />
+
+        <Divider color={C.navy} />
+
+        {/* 个性化建议 */}
+        <FramedCard borderColor={C.accent} style={{ textAlign: "left" }}>
+          <div style={{
+            display: "inline-block", padding: "3px 14px",
+            background: C.accent, color: "#fff", borderRadius: 2,
+            fontSize: 11, fontWeight: 700, fontFamily: fontTitle,
+            letterSpacing: 2, marginBottom: 14
+          }}>
+            你的人机共生策略
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {results.map((r, idx) => (
+              <div key={r.key}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: r.deep, fontFamily: fontTitle, marginBottom: 4 }}>
+                  {r.name}·{r.activePole.label}
+                </p>
+                <p style={{ fontSize: 13, color: C.inkLight, lineHeight: 2, fontFamily: font }}>
+                  {adviceList[idx]}
+                </p>
+              </div>
+            ))}
+          </div>
+        </FramedCard>
+
+        {/* 互补类型推荐 */}
+        <FramedCard borderColor={C.navy} style={{ marginTop: 20, textAlign: "center" }}>
+          <div style={{
+            display: "inline-block", padding: "3px 14px",
+            background: C.navy, color: C.cream, borderRadius: 2,
+            fontSize: 11, fontWeight: 700, fontFamily: fontTitle,
+            letterSpacing: 2, marginBottom: 14
+          }}>
+            最佳互补
+          </div>
+          <div style={{
+            display: "flex", justifyContent: "center", gap: 10,
+            flexWrap: "wrap", marginBottom: 14
+          }}>
+            {complementary.map((ct, i) => (
+              <div key={ct.code} style={{
+                padding: "8px 16px", borderRadius: 2,
+                border: `2px solid ${i === 0 ? C.accent : C.border}`,
+                background: i === 0 ? C.accent : C.cardBg,
+                color: i === 0 ? "#fff" : C.ink,
+                boxShadow: i === 0 ? `2px 2px 0 ${C.navy}` : "none"
+              }}>
+                <p style={{ fontSize: 12, fontWeight: 700, fontFamily: fontTitle, margin: 0 }}>
+                  {ct.code}
+                </p>
+                <p style={{ fontSize: 11, margin: "2px 0 0", fontFamily: font, opacity: 0.85 }}>
+                  {ct.name}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 13, color: C.inkLight, fontFamily: font, lineHeight: 1.8, margin: 0 }}>
+            <strong style={{ color: C.ink }}>{complementary.map(c => c.name).join("、")}</strong>
+            <br />和我最互补相配，邀请朋友快来测一测他的匹配度。
+          </p>
+        </FramedCard>
+
+        {/* 二维码 + 底部 */}
+        <div style={{ marginTop: 24, textAlign: "center" }}>
+          <QRCodeSVG value={SITE_URL} size={80} fgColor={C.navy} bgColor={C.cream} />
+          <p style={{ fontSize: 10, color: C.inkMuted, fontFamily: font, marginTop: 6 }}>
+            扫码测测你的 AI 协同人格
+          </p>
+        </div>
+
+      </div>
+      {/* /可保存区域 end */}
+
+      {/* 操作按钮 */}
+      <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
+        <button onClick={handleSaveImage} disabled={saving} style={{
+          padding: "12px 32px", background: C.accent, color: "#fff",
+          fontSize: 14, fontWeight: 700, border: "none", borderRadius: 2,
+          cursor: saving ? "wait" : "pointer", fontFamily: fontTitle,
+          letterSpacing: 1, boxShadow: `2px 2px 0 ${C.navy}`,
+          opacity: saving ? 0.6 : 1
+        }}>
+          {saving ? "保存中..." : "📸 保存结果图片"}
+        </button>
+
+        <button onClick={() => setShowDist(true)} style={{
+          padding: "12px 32px",
+          background: C.cardBg, color: C.ink,
+          fontSize: 14, fontWeight: 700, border: `2px solid ${C.navy}`,
+          borderRadius: 2, cursor: "pointer", fontFamily: fontTitle,
+          letterSpacing: 1, boxShadow: `2px 2px 0 ${C.border}`
+        }}>
+          看看其他人
+        </button>
+      </div>
 
       {/* 底部说明 */}
       <div style={{
