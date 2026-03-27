@@ -1,13 +1,79 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
     <title>AI 协同16型人格测评</title>
+
+    <!-- 双核浏览器（360/QQ/搜狗）强制 Webkit 内核 -->
+    <meta name="renderer" content="webkit" />
+    <meta name="force-rendering" content="webkit" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+
+    <!-- 微信/QQ 内置浏览器：禁止自动识别电话/邮箱/地址 -->
+    <meta name="format-detection" content="telephone=no,email=no,address=no" />
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AI协同16型" />
+    <meta name="theme-color" content="#2C3E5A" />
+
+    <!-- DNS 预解析：Supabase -->
+    <link rel="dns-prefetch" href="https://pcrktcgzqqqzgjgnohpj.supabase.co" />
+    <link rel="preconnect" href="https://pcrktcgzqqqzgjgnohpj.supabase.co" crossorigin="anonymous" />
+
+    <!-- 内联骨架屏样式 -->
+    <style>
+      body { margin: 0; padding: 0; background: #F9F5E7; }
+      #loading-skeleton {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        background: #F9F5E7;
+      }
+      #loading-skeleton .sk-label {
+        display: inline-block; padding: 6px 24px; margin-bottom: 20px;
+        background: #2C3E5A; color: #F9F5E7; border-radius: 2px;
+        font-size: 11px; font-weight: 700; letter-spacing: 4px;
+        font-family: 'Futura', 'Helvetica Neue', sans-serif;
+      }
+      #loading-skeleton .sk-spinner {
+        width: 28px; height: 28px;
+        border: 3px solid #C8BBAA; border-top-color: #2C3E5A;
+        border-radius: 50%;
+        animation: sk-spin 0.8s linear infinite;
+      }
+      @keyframes sk-spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
+    <!-- 骨架屏 -->
+    <div id="loading-skeleton">
+      <div class="sk-label">AI SYNTYPE &middot; 16</div>
+      <div class="sk-spinner"></div>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- 骨架屏自动移除 -->
+    <script>
+      var observer = new MutationObserver(function() {
+        var skeleton = document.getElementById('loading-skeleton');
+        if (skeleton && document.querySelector('[data-app-ready]')) {
+          skeleton.style.opacity = '0';
+          skeleton.style.transition = 'opacity 0.3s';
+          setTimeout(function() { skeleton.remove(); }, 300);
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      setTimeout(function() {
+        var s = document.getElementById('loading-skeleton');
+        if (s) s.remove();
+      }, 3000);
+    </script>
   </body>
 </html>
